@@ -1,5 +1,6 @@
 import 'react-native-gesture-handler';
-import React from 'react';
+import React, { useEffect } from 'react';
+import { ToastAndroid } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import HomeScreen from './components/HomeScreen';
@@ -9,6 +10,14 @@ import store from './redux/store'
 
 const ITSApp = () => {
   const Stack = createStackNavigator();
+
+  useEffect(() => {
+    ToastAndroid.showWithGravity(
+      'Welcome to ITS',
+      ToastAndroid.SHORT,
+      ToastAndroid.CENTER
+    );
+  });
 
   return (
     <Provider store={store}>
