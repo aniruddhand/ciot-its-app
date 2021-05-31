@@ -1,4 +1,11 @@
-import { createStore } from "redux";
-import rootReducer from "./reducers";
+import { configureStore } from '@reduxjs/toolkit'
 
-export default createStore(rootReducer);
+import connectButtonStateReducer from './reducers/connectButtonStateSlice';
+import connectButtonLabelReducer from './reducers/connectButtonLabelSlice';
+
+export default configureStore({
+    reducer: {
+        connectButtonState: connectButtonStateReducer,
+        connectButtonLabel: connectButtonLabelReducer
+    }
+})

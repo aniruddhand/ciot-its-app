@@ -15,7 +15,7 @@ const styles = StyleSheet.create({
     },
 });
 
-const ProfileScreen = ({ navigation, route }) => {
+const Profile = ({ navigation, route }) => {
     return (
         <View style={styles.container}>
             <MapView
@@ -31,4 +31,4 @@ const ProfileScreen = ({ navigation, route }) => {
     );
 };
 
-export default ProfileScreen;
+export default Profile;
