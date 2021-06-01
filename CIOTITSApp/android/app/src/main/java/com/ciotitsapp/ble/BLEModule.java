@@ -1,23 +1,45 @@
 package com.ciotitsapp.ble;
 
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.le.BluetoothLeScanner;
-import android.bluetooth.le.ScanCallback;
-import android.bluetooth.le.ScanResult;
-import android.os.Handler;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattDescriptor;
+import android.bluetooth.BluetoothGattService;
+import android.bluetooth.BluetoothProfile;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.text.MessageFormat;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class BLEModule extends ReactContextBaseJavaModule {
     private static final String MODULE_NAME = "BLEModule";
+
+    private static final String EVENT_CONN_STATUS_CHANGE = "ConnectionStatusChange";
+    private static final String EVENT_VEHICLE_STATUS_CHANGE = "VehicleStatusChange";
+
+    private static final String RPI_MAC_ADDRESS = "DC:A6:32:B6:67:13";
+    private static final String VSS_UUID = "0f7d0ee7-ab1f-47cf-93ed-9ef8038f8bec";
+    private static final String VSC_UUID = "0f7d0ee8-ab1f-47cf-93ed-9ef8038f8bec";
+    public static final String CHR_CONFIG_DESC_UUID = "00002902-0000-1000-8000-00805f9b34fb";
+
+    private BluetoothAdapter defaultAdapter;
+    private BluetoothGatt bluetoothGatt;
+    private BluetoothGattDescriptor charConfigDesc;
+
+    private boolean connectionClosedByUser;
 
     public BLEModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -42,30 +64,143 @@ public class BLEModule extends ReactContextBaseJavaModule {
     public void connectToVehicle(Callback failureCallback, Callback successCallback) {
         Log.i(MODULE_NAME, "Checking bluetooth settings...");
 
-        BluetoothAdapter defaultAdapter = BluetoothAdapter.getDefaultAdapter();
+        if (defaultAdapter == null) {
+            defaultAdapter = BluetoothAdapter.getDefaultAdapter();
+        }
 
         if (defaultAdapter == null) {
             String errorMsg = "Bluetooth adapter not found!";
             Log.e(MODULE_NAME, errorMsg);
 
             failureCallback.invoke(errorMsg);
-        } else {
-            Log.i(MODULE_NAME, "Bluetooth adapter exists. Scanning for BLE devices for 10 secs...");
-            BluetoothLeScanner leScanner = defaultAdapter.getBluetoothLeScanner();
+        }
 
-            // DC:A6:32:B6:67:13
-            ScanCallback scanCallback = new ScanCallback() {
-                @Override
-                public void onScanResult(int callbackType, ScanResult result) {
-                    super.onScanResult(callbackType, result);
-                    Log.i(MODULE_NAME, MessageFormat.format("Device name: {0}, H/W Address: {1}",
-                            result.getDevice().getName(), result.getDevice().getAddress()));
+        connectToBleServerAndEnableNotifications();
+        //successCallback.invoke(true);
+    }
+
+    @ReactMethod
+    public void disconnectFromVehicle() {
+        if (bluetoothGatt != null) {
+            connectionClosedByUser = true;
+
+            setNotificationsEnabled(false);
+
+            bluetoothGatt.disconnect();
+            bluetoothGatt.close();
+
+            bluetoothGatt = null;
+            charConfigDesc = null;
+        }
+    }
+
+    @Nullable
+    @Override
+    public Map<String, Object> getConstants() {
+        final Map<String, Object> constants = new HashMap<>();
+        constants.put("CONN_STATUS_EVENT", EVENT_CONN_STATUS_CHANGE);
+        constants.put("VEHICLE_STATUS_EVENT", EVENT_VEHICLE_STATUS_CHANGE);
+
+        return constants;
+    }
+
+    private void connectToBleServerAndEnableNotifications() {
+        Log.i(MODULE_NAME, "Bluetooth adapter exists. Connecting with vehicle...");
+
+        final BluetoothDevice piDevice = defaultAdapter
+                .getRemoteDevice(RPI_MAC_ADDRESS);
+        final ReactApplicationContext context = getReactApplicationContext();
+
+        bluetoothGatt = piDevice.connectGatt(context, false,
+                new VehicleStatusCallback(), BluetoothDevice.TRANSPORT_LE);
+    }
+
+    private void setNotificationsEnabled(boolean enabled) {
+        if (charConfigDesc == null) {
+            return;
+        }
+
+        charConfigDesc.setValue(
+                enabled ? BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        : BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE);
+        bluetoothGatt.writeDescriptor(charConfigDesc);
+    }
+
+    private class VehicleStatusCallback extends BluetoothGattCallback {
+        private final DeviceEventManagerModule.RCTDeviceEventEmitter eventEmitter;
+
+        public VehicleStatusCallback() {
+            ReactApplicationContext context = getReactApplicationContext();
+            eventEmitter = context
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class);
+        }
+
+        @Override
+        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+            super.onConnectionStateChange(gatt, status, newState);
+
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                Log.i(MODULE_NAME, "Connected to ITS BLE server, discovering services...");
+                eventEmitter.emit(EVENT_CONN_STATUS_CHANGE, "discovering");
+
+                gatt.discoverServices();
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                Log.i(MODULE_NAME, MessageFormat.format("Disconnected from ITS " +
+                        "BLE server... connectionClosedByUser: {0}", connectionClosedByUser));
+
+                if (connectionClosedByUser) {
+                    eventEmitter.emit(EVENT_CONN_STATUS_CHANGE, "disconnected");
                 }
-            };
 
-            new Handler().postDelayed(() -> leScanner.stopScan(scanCallback), 10000);
+                gatt.close();
+            }
+        }
 
-            leScanner.startScan(scanCallback);
+        @Override
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            super.onServicesDiscovered(gatt, status);
+
+            Log.d(MODULE_NAME, "Discovered services...");
+            eventEmitter.emit(EVENT_CONN_STATUS_CHANGE, "connected");
+
+            BluetoothGattService statusService = gatt.getService(UUID.fromString(VSS_UUID));
+            if (statusService == null) {
+                Log.e(MODULE_NAME, "Vehicle status service not found!");
+            }
+
+            Log.d(MODULE_NAME, "Fetched vehicle status service");
+            BluetoothGattCharacteristic statusCh = statusService.getCharacteristic(
+                    UUID.fromString(VSC_UUID));
+
+            if (statusCh == null) {
+                Log.e(MODULE_NAME, "Vehicle status characteristic not found!");
+            }
+
+            Log.d(MODULE_NAME, "Fetched vehicle status character");
+            if (!gatt.setCharacteristicNotification(statusCh, true)) {
+                Log.e(MODULE_NAME, "Could not enable notifications for" +
+                        " vehicle status characteristic!");
+            }
+
+            charConfigDesc = statusCh.getDescriptor(UUID
+                    .fromString(CHR_CONFIG_DESC_UUID));
+
+            if (charConfigDesc != null) {
+                setNotificationsEnabled(true);
+                Log.d(MODULE_NAME, "Enabled notifications for vehicle status");
+            }
+        }
+
+        @Override
+        public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic
+                characteristic) {
+            super.onCharacteristicChanged(gatt, characteristic);
+            Log.i(MODULE_NAME, MessageFormat.format("Characteristic changed, " +
+                            "new value: ",
+                    characteristic.getStringValue(0)));
+
+            eventEmitter.emit(EVENT_VEHICLE_STATUS_CHANGE,
+                    characteristic.getStringValue(0));
         }
     }
 }

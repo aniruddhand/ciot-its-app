@@ -1,32 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { Button, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React from 'react';
 
-import BLEModule from '../services/BLEModule';
+import { Button,
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator } from 'react-native';
+
+import { useSelector, useDispatch } from 'react-redux';
+import { connectToVehicle, disconnectFromVehicle, STATUS_DICONNECTING } from '../redux/reducers/connectionStateSlice';
+import {
+  STATUS_CONNECTING,
+  STATUS_CONNECTED,
+  STATUS_DISCONNECTED } from '../redux/reducers/connectionStateSlice';
 
 const BUTTON_LABEL_DEFAULT  = "CONNECT";
-const BUTTON_LABEL_SCANNING = "SCANNING";
-const BUTTON_LABEL_PAIRING  = "PAIRING";
+const BUTTON_LABEL_DISCONNECT = "DISCONNECT";
 
 const Home = ({ navigation }) => {
-  const [ buttonDisabled, setButtonDisabled ] = useState(false);
-  const [ buttonLabel, setButtonLabel ] = useState(BUTTON_LABEL_DEFAULT);
-  const [ showIndicator, setShowIndicator ] = useState(false);
-
-  useEffect(() => {
-    setShowIndicator(buttonDisabled)
-  }, [buttonDisabled]);
-  
-  function bindWithVehicle() {
-    BLEModule.connectToVehicle(() => {
-    }, () => {
-    });
-
-    setTimeout(() => {
-      setButtonDisabled(false);
-      setButtonLabel(BUTTON_LABEL_DEFAULT);
-
-    }, 3000);
-  }
+  const connectionStatus = useSelector((state) => state.connection.status);
+  const dispatch = useDispatch();
 
   return (
     <View style={styles.container}>
@@ -37,19 +29,24 @@ const Home = ({ navigation }) => {
       <Text style={styles.text}>
         Click on Connect to connect with your vehicle.
       </Text>
-      <ActivityIndicator animating={showIndicator} size={50} color='#2196F3'/>
+      <ActivityIndicator animating={connectionStatus === STATUS_CONNECTING 
+        || connectionStatus === STATUS_DICONNECTING} size={50} color='#2196F3'/>
       <View style={styles.buttonContainer}>
+        {connectionStatus === STATUS_CONNECTED &&
         <Button
-          disabled={buttonDisabled}
-          onPress={ () => {
-            setButtonDisabled(true);
-            setButtonLabel(BUTTON_LABEL_SCANNING);
-
-            bindWithVehicle()
-          }}
+          color='#EE0290'
+          onPress={()=>{ dispatch(disconnectFromVehicle()) }}
+          style={styles.disconnectButton}
+          title={BUTTON_LABEL_DISCONNECT} />
+        }
+        { connectionStatus <= STATUS_CONNECTING &&
+        <Button
+          color='#6200EE'
+          disabled={connectionStatus > STATUS_DISCONNECTED}
+          onPress={() => { dispatch(connectToVehicle()) }}
           style={styles.connectButton}
-          title={buttonLabel}
-          />
+          title={BUTTON_LABEL_DEFAULT} />
+        }
       </View>
     </View>
   );
@@ -72,6 +69,10 @@ const styles = StyleSheet.create({
     flexGrow: 1
   },
   connectButton: {
+    
+  },
+  disconnectButton: {
+    
   }
 });
 
