@@ -17,9 +17,7 @@ function establishBLEConnection(successCallback, failureCallback) {
     return new Promise((successCallback, failureCallback) => {
         eventEmitter.addListener(CONN_STATUS_EVENT, (status) => {
             const successful = (status === 'connected' || status === 'discovering');
-            console.log('Connection state changed!');
-
-            if (successful) {
+            if (successful) {                
                 successCallback();
 
             } else {
@@ -69,12 +67,12 @@ export const connectionStateSlice = createSlice({
             state.status = STATUS_CONNECTED;
         },
         [connectToVehicle.rejected]: (state, action) => {
-            console.log('Connection rejected!');
+            console.log('Connection failed!');
             state.status = STATUS_FAILED;
         },
         [disconnectFromVehicle.pending]: (state, action) => {
             console.log('Disconnection pending...');
-            state.status = STAT
+            state.status = STATUS_DICONNECTING;
         },
         [disconnectFromVehicle.fulfilled]: (state, action) => {
             console.log('Connection closed!');

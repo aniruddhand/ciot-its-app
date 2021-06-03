@@ -8,7 +8,7 @@ import { Provider } from 'react-redux';
 import store from './redux/store'
 
 import Home from './components/Home';
-import Profile from './components/Profile';
+import DrivingAssistance from './components/DrivingAssistance';
 
 const ITSApp = () => {
   const Stack = createStackNavigator();
@@ -23,14 +23,15 @@ const ITSApp = () => {
     <Provider store={store}>
       <NavigationContainer>
         <Stack.Navigator
-          headerMode="screen">
+          headerMode='screen'>
           <Stack.Screen
-            name="Home"
+            name='Home'
             component={Home}
-            options={{title: 'Intelligent Transportation System', }}/>
+            options={{title: 'ITS - Home', }}/>
           <Stack.Screen
-            name="Profile"
-            component={Profile}/>
+            name='DrivingAssistance'
+            component={DrivingAssistance}
+            options={{title: 'ITS - Driving Assistance'}}/>
         </Stack.Navigator>
       </NavigationContainer>
       </Provider>

@@ -39,6 +39,7 @@ public class BLEModule extends ReactContextBaseJavaModule {
     private BluetoothGatt bluetoothGatt;
     private BluetoothGattDescriptor charConfigDesc;
 
+    private boolean connected;
     private boolean connectionClosedByUser;
 
     public BLEModule(ReactApplicationContext reactContext) {
@@ -83,6 +84,7 @@ public class BLEModule extends ReactContextBaseJavaModule {
     public void disconnectFromVehicle() {
         if (bluetoothGatt != null) {
             connectionClosedByUser = true;
+            connected = false;
 
             setNotificationsEnabled(false);
 
@@ -140,16 +142,24 @@ public class BLEModule extends ReactContextBaseJavaModule {
             super.onConnectionStateChange(gatt, status, newState);
 
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                connected = true;
+
                 Log.i(MODULE_NAME, "Connected to ITS BLE server, discovering services...");
                 eventEmitter.emit(EVENT_CONN_STATUS_CHANGE, "discovering");
 
+                // Connected to the server, now discover services
                 gatt.discoverServices();
-            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                Log.i(MODULE_NAME, MessageFormat.format("Disconnected from ITS " +
-                        "BLE server... connectionClosedByUser: {0}", connectionClosedByUser));
 
-                if (connectionClosedByUser) {
-                    eventEmitter.emit(EVENT_CONN_STATUS_CHANGE, "disconnected");
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (connected) {
+                    Log.i(MODULE_NAME, MessageFormat.format("Disconnected from ITS " +
+                            "BLE server... connectionClosedByUser: {0}", connectionClosedByUser));
+                    if (connectionClosedByUser) {
+                        eventEmitter.emit(EVENT_CONN_STATUS_CHANGE, "disconnected");
+                    }
+                } else {
+                    Log.i(MODULE_NAME, "Could not connect to ITS BLE server...");
+                    eventEmitter.emit(EVENT_CONN_STATUS_CHANGE, "failed");
                 }
 
                 gatt.close();
@@ -166,6 +176,7 @@ public class BLEModule extends ReactContextBaseJavaModule {
             BluetoothGattService statusService = gatt.getService(UUID.fromString(VSS_UUID));
             if (statusService == null) {
                 Log.e(MODULE_NAME, "Vehicle status service not found!");
+                return;
             }
 
             Log.d(MODULE_NAME, "Fetched vehicle status service");
@@ -174,6 +185,7 @@ public class BLEModule extends ReactContextBaseJavaModule {
 
             if (statusCh == null) {
                 Log.e(MODULE_NAME, "Vehicle status characteristic not found!");
+                return;
             }
 
             Log.d(MODULE_NAME, "Fetched vehicle status character");
@@ -195,12 +207,12 @@ public class BLEModule extends ReactContextBaseJavaModule {
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic
                 characteristic) {
             super.onCharacteristicChanged(gatt, characteristic);
-            Log.i(MODULE_NAME, MessageFormat.format("Characteristic changed, " +
-                            "new value: ",
-                    characteristic.getStringValue(0)));
 
-            eventEmitter.emit(EVENT_VEHICLE_STATUS_CHANGE,
-                    characteristic.getStringValue(0));
+            Log.d(MODULE_NAME, "Received vehicle status change notification from " +
+                    "Gatt server");
+
+            final String updatedVales = characteristic.getStringValue(0);
+            eventEmitter.emit(EVENT_VEHICLE_STATUS_CHANGE, updatedVales);
         }
     }
 }
