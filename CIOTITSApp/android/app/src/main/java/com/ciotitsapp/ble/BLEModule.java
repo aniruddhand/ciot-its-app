@@ -89,7 +89,7 @@ public class BLEModule extends ReactContextBaseJavaModule {
             setNotificationsEnabled(false);
 
             bluetoothGatt.disconnect();
-            bluetoothGatt.close();
+            //bluetoothGatt.close();
 
             bluetoothGatt = null;
             charConfigDesc = null;
@@ -192,6 +192,7 @@ public class BLEModule extends ReactContextBaseJavaModule {
             if (!gatt.setCharacteristicNotification(statusCh, true)) {
                 Log.e(MODULE_NAME, "Could not enable notifications for" +
                         " vehicle status characteristic!");
+                return;
             }
 
             charConfigDesc = statusCh.getDescriptor(UUID
@@ -208,10 +209,10 @@ public class BLEModule extends ReactContextBaseJavaModule {
                 characteristic) {
             super.onCharacteristicChanged(gatt, characteristic);
 
-            Log.d(MODULE_NAME, "Received vehicle status change notification from " +
-                    "Gatt server");
-
             final String updatedVales = characteristic.getStringValue(0);
+            Log.d(MODULE_NAME, "Received vehicle status change notification from " +
+                    "Gatt server: " + updatedVales);
+
             eventEmitter.emit(EVENT_VEHICLE_STATUS_CHANGE, updatedVales);
         }
     }

@@ -1,20 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
-import { Button, View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Button, View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 
 import Geolocation from 'react-native-geolocation-service';
 
 import { useDispatch, useSelector } from 'react-redux';
-import { disconnectFromVehicle } from '../redux/reducers/connectionStateSlice';
+import { disconnectFromVehicle, STATUS_CONNECTING } from '../redux/reducers/connectionStateSlice';
 import {
   STATUS_DISCONNECTED,
   STATUS_DISCONNECTING,
   STATUS_CONNECTED } from '../redux/reducers/connectionStateSlice';
 
+import { NativeEventEmitter } from 'react-native';
+
+import BLEModule from '../native/BLEModule';
+
+const { VEHICLE_STATUS_EVENT } = BLEModule.getConstants();
+const eventEmitter = new NativeEventEmitter(BLEModule);
+
 const BUTTON_LABEL_DISCONNECT = "End";
 
 const DrivingAssistance = ({ navigation, route }) => {
   const [ currentLocation, setCurrentLocation] = useState(undefined);
+  const [ vehicleData, setVehicleData ] = useState({vehicleID: undefined, temperature: -1});
+
   const connectionStatus = useSelector(state => state.connection.status);
   const dispatch = useDispatch();
 
@@ -25,9 +34,23 @@ const DrivingAssistance = ({ navigation, route }) => {
     }
 
     if (connectionStatus === STATUS_DISCONNECTED) {
+      eventEmitter.removeAllListeners(VEHICLE_STATUS_EVENT);
+
       setTimeout(() => {
         navigation.navigate('Home');
       }, 800);
+    }
+
+    if (connectionStatus === STATUS_CONNECTING
+      || connectionStatus === STATUS_CONNECTED) {
+      
+      eventEmitter.addListener(VEHICLE_STATUS_EVENT, (vehData) => {
+        if (!vehData) {
+          console.error("Vehicle data was empty or null!");
+        }
+
+        setVehicleData(JSON.parse(vehData));
+      });
     }
   }, [ connectionStatus ]);
 
@@ -41,7 +64,7 @@ const DrivingAssistance = ({ navigation, route }) => {
       error => {
         console.log(error.code, error.message);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      { enableHighAccuracy: true, interval: 5000, timeout: 15000, maximumAge: 10000 }
     );
   });
 
@@ -52,6 +75,8 @@ const DrivingAssistance = ({ navigation, route }) => {
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         showsUserLocation={true}
+        showsPointsOfInterest={false}
+
         followsUserLocation={true}
         loadingEnabled={true}
         loadingIndicatorColor='#EE0290'
@@ -68,6 +93,20 @@ const DrivingAssistance = ({ navigation, route }) => {
           style={styles.disconnectButton}
           title={BUTTON_LABEL_DISCONNECT} />
       </View>
+      <View style={styles.floatingPanel}>
+        <View style={styles.kpiItemsContainer}></View>
+        <View style={styles.kpiContainer}>
+          {vehicleData.temperature > 0 && 
+          <Text style={styles.kpi}>{vehicleData.temperature}&#176;</Text>}
+          {vehicleData.temperature < 0 &&
+          <Text style={styles.kpi}></Text>}
+          <Text style={styles.kpiHeader}>Temperature</Text>
+        </View>
+        <View style={styles.kpiContainer}>
+          <Text style={styles.kpi}>{currentLocation ? Math.floor(currentLocation.coords.speed * 1.609) : 0}</Text>
+          <Text style={styles.kpiHeader}>Speed</Text>
+        </View>
+      </View>      
     </View>
   );
 };
@@ -86,6 +125,42 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  floatingPanel: {
+    flex: 1,
+    flexDirection: 'column',
+    alignContent: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: 10,
+    bottom: 10,
+    right: 10
+  },
+  kpiItemsContainer: {
+    backgroundColor: 'blue',
+    opacity: 0.6,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    zIndex: 1,
+    backgroundColor: 'white',
+    opacity: 0.4,
+    width: 80
+  },
+  kpiContainer: {
+    paddingBottom: 25,
+    alignItems: 'center'
+  },
+  kpiHeader: {
+    fontWeight: 'bold',
+    color: '#555555',
+    fontSize: 12,
+    zIndex: 100
+  },
+  kpi: {
+    fontSize: 24,
+    zIndex: 100
   }
 });
 

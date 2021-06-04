@@ -17,11 +17,21 @@ import {
   STATUS_DICONNECTING,
   STATUS_FAILED } from '../redux/reducers/connectionStateSlice';
 
+import { NativeEventEmitter } from 'react-native';
+
+import BLEModule from '../native/BLEModule';
+
+const { CONN_STATUS_EVENT, VEHICLE_STATUS_EVENT } = BLEModule.getConstants();
+const eventEmitter = new NativeEventEmitter(BLEModule);
+
 const BUTTON_LABEL_DEFAULT  = "Start";
 
 const Home = ({ navigation }) => {
-  const [ loading, setLoading ] = useState(true);
+  const [ initializing, setLoading ] = useState(true);
+  const [ lastUpdate, setLastUpdate ] = useState({});
+
   const connectionStatus = useSelector((state) => state.connection.status);
+
   const dispatch = useDispatch();
 
   useEffect(() => {
@@ -47,17 +57,29 @@ const Home = ({ navigation }) => {
   }, [ connectionStatus ]);
 
   useEffect(() => {
-    if (!loading) {
-      return
+    if (!initializing) {
+      if (connectionStatus === STATUS_DICONNECTING
+        || connectionStatus === STATUS_DISCONNECTED) {
+
+        eventEmitter.removeAllListeners(VEHICLE_STATUS_EVENT);
+      }
+
+      return;
     }
+
     setLoading(false);
+
+    eventEmitter.addListener(VEHICLE_STATUS_EVENT, (event) => {
+        console.log("Received update..." + event);
+        setLastUpdate();
+    });
   });
 
-  const showIndicator = (loading ||
+  const showIndicator = (initializing ||
                           (connectionStatus === STATUS_CONNECTING) || 
                           (connectionStatus === STATUS_DICONNECTING));
 
-  const disabled = (loading ||
+  const disabled = (initializing ||
       (connectionStatus === STATUS_DICONNECTING) ||
       (connectionStatus > STATUS_DISCONNECTED));
 
@@ -77,7 +99,6 @@ const Home = ({ navigation }) => {
         <Button
           disabled={disabled}
           onPress={() => { dispatch(connectToVehicle()) }}
-          style={styles.connectButton}
           title={BUTTON_LABEL_DEFAULT} />
       </View>
     </View>
@@ -92,19 +113,27 @@ const styles = StyleSheet.create({
   },
   text: {
     marginBottom: 10,
-    flexGrow: 0
   },
   buttonContainer: {
     flex: 1,
-    flexDirection: 'column-reverse',
     alignItems: 'center',
-    flexGrow: 1
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 10
   },
-  connectButton: {
-    
-  },
-  disconnectButton: {
-    
+  floatingPanel: {
+    flex: 1,
+    flexDirection: 'column',
+    alignContent: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: 10,
+    bottom: 10,
+    right: 10,
+    width: 50,
+    borderWidth: 1
   }
 });
 
